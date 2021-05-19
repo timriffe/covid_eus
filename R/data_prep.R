@@ -98,6 +98,8 @@ B <-
 #CCAA %>% View()
 #A$provincia_iso
 
+
+# this relates province iso2 to ccaa iso2
 prov_codes <- 
   read_html("https://es.wikipedia.org/wiki/ISO_3166-2:ES", encoding = "latin") %>% 
   html_table() %>% 
@@ -108,7 +110,8 @@ prov_codes <-
   select(CCAA_iso = `Comunidad autónoma`, provincia_iso) %>% 
   mutate(provincia_iso = stringr::str_remove_all(provincia_iso, "[^A-z|0-9|[:punct:]|\\s]"))
 
-
+# relates province name, iso2, and postal code
+# need postal code, since this is how provinces are coded in population data...
 CPRO <-
   read_html("https://es.wikipedia.org/wiki/Anexo:Provincias_de_Espa%C3%B1a_por_c%C3%B3digo_postal") %>% 
   html_table() %>% 
@@ -124,12 +127,13 @@ CPRO <-
          CPRO = stringi::stri_enc_toascii(CPRO),
          provincia_iso = stringr::str_remove_all(provincia_iso, "[^A-z|0-9|[:punct:]|\\s]"))
 
+# add all codes to covid data by province
 CC <-
   B %>% 
   left_join(prov_codes, by = "provincia_iso") %>% 
   left_join(CPRO, by = "provincia_iso")
 
-
+#
 # For population, get INE series 31304 (https://www.ine.es/jaxiT3/Tabla.htm?t=31304)
 P <- read_delim("Data/31304.csv", delim = ";") %>% 
   mutate(Total = gsub(Total, pattern = "\\.", replacement = ""),
@@ -138,10 +142,7 @@ P <- read_delim("Data/31304.csv", delim = ";") %>%
                 Provincias != "Total Nacional") %>% 
   separate(Edad, sep = " ", into= c("Age",NA)) %>% 
   mutate(Age = as.integer(Age)) %>% 
-  separate(Provincias, into = c("CPRO","Provincia"))
-
-Q <-
-  P %>% 
+  separate(Provincias, into = c("CPRO","Provincia")) %>% 
   dplyr::filter(Periodo == "1 de julio de 2020",
                 Sexo %in% c("Hombres", "Mujeres")) %>% 
   mutate(sexo = case_when(Sexo == "Hombres" ~ "H",
@@ -152,34 +153,55 @@ Q <-
   summarize(pob = sum(Total), .groups = "drop") %>% 
   mutate(edad = as.character(edad))
 
-R <- left_join(CC, Q, by = c("edad","sexo","CPRO"))
+R <- left_join(CC, P, by = c("edad","sexo","CPRO"))
 
-out <- 
+S <- 
   R %>% 
   group_by(CCAA_iso, year_iso, week_iso, fecha, sexo, edad, variable) %>% 
   summarise(value = sum(value),
             pob = sum(pob),
             .groups = "drop")
-
-stand_PV <-
-  out %>% 
+# Basque Country standard population (age * sex)
+stand_pv <-
+  S %>% 
   dplyr::filter(fecha == min(fecha),
                 CCAA_iso == "PV",
                 variable == "casos") %>% 
-  mutate(stand_PV = pob / sum(pob)) %>% 
-  select(sexo, edad, stand_PV)
+  mutate(stand_pv = pob / sum(pob)) %>% 
+  select(sexo, edad, stand_pv)
+
+# Spain nation standard population (age * sex)
+stand_nac <-
+  S %>% 
+  group_by(sexo, edad) %>% 
+  summarize(pob = sum(pob), .groups = "drop") %>% 
+  mutate(stand_nac = pob / sum(pob)) %>% 
+  select(sexo, edad, stand_nac)
+
+out <-
+  S %>% 
+  left_join(stand_nac) %>% 
+  left_join(stand_pv) %>% 
+  arrange(CCAA_iso, variable, edad, fecha) %>% 
+  group_by(CCAA_iso, variable, edad) %>% 
+  mutate(tasa = value / pob,
+         tasa_cumul = cumsum(tasa)) %>% 
+  ungroup()
 
 out_standardized <-
   out %>% 
-  left_join(stand_PV, by = c("sexo","edad")) %>% 
   group_by(CCAA_iso,year_iso, week_iso, fecha, variable) %>% 
-  summarize(tasa = sum(value / pob * stand_PV), .groups = "drop" )
+  summarize(tasa_st_pv = sum(tasa * stand_pv), 
+            tasa_st_nac = sum(tasa * stand_nac),
+            .groups = "drop") 
+
 PV <- out_standardized %>% dplyr::filter(CCAA_iso == "PV")
+
 out_standardized %>% 
-  ggplot(aes(x = fecha, y = tasa * 1e5, group = CCAA_iso)) + 
+  ggplot(aes(x = fecha, y = tasa_st_nac * 1e5, group = CCAA_iso)) + 
   geom_line(alpha = .5) +
-  geom_line(data = PV,,
-            mapping = aes(x = fecha, y = tasa * 1e5),
+  geom_line(data = PV,
+            mapping = aes(x = fecha, y = tasa_st_nac * 1e5),
             color = "red",
             size = 2) +
   facet_wrap(~variable, scale = "free_y") 
@@ -188,3 +210,17 @@ PV %>%
   dplyr::filter(variable == "def") %>% 
   ggplot(aes(x = fecha, y = tasa)) +
   geom_line()
+
+library(ggridges)
+
+out_standardized %>% 
+  dplyr::filter(variable == "casos")  %>% 
+  ggplot(aes(x = fecha, y = CCAA_iso, height = tasa_st_nac * 4e2)) + 
+  geom_ridgeline() +
+  geom_vline(xintercept = as_date("2020-03-25"))
+
+
+out %>% 
+  group_by(CCAA_iso, )
+
+

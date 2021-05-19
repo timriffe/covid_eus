@@ -1,12 +1,11 @@
-# remotes::install_github("oddworldng/INEbaseR")
-library(INEbaseR)
+
 library(httr)
 library(rvest)
 library(tidyverse)
 library(readr)
 library(lubridate)
 
-# chunk <- A %>% dplyr::filter(provincia_iso == "A", year_iso == 2020, week_iso == 2, sexo == "H", `var` == "casos")
+
 redistribute_NC_edad <- function(chunk){
   if (sum(chunk$value) == 0){
     chunk %>% dplyr::filter(edad != "NC") %>% return()
@@ -186,41 +185,9 @@ out <-
   group_by(CCAA_iso, variable, edad) %>% 
   mutate(tasa = value / pob,
          tasa_cumul = cumsum(tasa)) %>% 
-  ungroup()
-
-out_standardized <-
-  out %>% 
-  group_by(CCAA_iso,year_iso, week_iso, fecha, variable) %>% 
-  summarize(tasa_st_pv = sum(tasa * stand_pv), 
-            tasa_st_nac = sum(tasa * stand_nac),
-            .groups = "drop") 
-
-PV <- out_standardized %>% dplyr::filter(CCAA_iso == "PV")
-
-out_standardized %>% 
-  ggplot(aes(x = fecha, y = tasa_st_nac * 1e5, group = CCAA_iso)) + 
-  geom_line(alpha = .5) +
-  geom_line(data = PV,
-            mapping = aes(x = fecha, y = tasa_st_nac * 1e5),
-            color = "red",
-            size = 2) +
-  facet_wrap(~variable, scale = "free_y") 
-
-PV %>% 
-  dplyr::filter(variable == "def") %>% 
-  ggplot(aes(x = fecha, y = tasa)) +
-  geom_line()
-
-library(ggridges)
-
-out_standardized %>% 
-  dplyr::filter(variable == "casos")  %>% 
-  ggplot(aes(x = fecha, y = CCAA_iso, height = tasa_st_nac * 4e2)) + 
-  geom_ridgeline() +
-  geom_vline(xintercept = as_date("2020-03-25"))
+  ungroup() 
 
 
-out %>% 
-  group_by(CCAA_iso, )
+saveRDS(out, file = "Data/iscii_ccaa.rds")
 
 

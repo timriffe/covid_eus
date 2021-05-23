@@ -36,8 +36,7 @@ both_sex_subset %>%
   geom_line() +
   facet_grid(~edad, scale = "free_y") 
 
-both_sex_subset %>% 
-  ggplot(aes())
+
 
 PV <- covid_st%>% dplyr::filter(CCAA_iso == "PV")
 
@@ -52,7 +51,7 @@ covid_st %>%
 
 PV %>% 
   dplyr::filter(variable == "def") %>% 
-  ggplot(aes(x = fecha, y = tasa)) +
+  ggplot(aes(x = fecha, y = tasa_st_pv)) +
   geom_line()
 
 library(ggridges)

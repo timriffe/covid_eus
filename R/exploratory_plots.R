@@ -192,9 +192,9 @@ plot_grid(CCAA_relrank_plots[[1]],CCAA_relrank_plots[[2]],CCAA_relrank_plots[[3]
 
 covid_relranks2 <-
   covid_ranks %>% 
-  group_by(variable) %>% 
+  group_by(CCAA_iso, variable) %>% 
   summarize(tasa_st_nac = sum(tasa_st_nac),.groups = "keep") %>% 
-  mutate(RelRank = tasa_st_nac / max(tasa_st_nac) * 17)
+  mutate(RelRank = tasa_st_nac / max(tasa_st_nac) * 17) %>% 
   ungroup() 
   
   covid_relranks2 %>% 
@@ -222,3 +222,4 @@ covid_relranks2 <-
           axis.title.y=element_blank(),
           axis.text.y=element_blank(),
           axis.ticks.y=element_blank())
+  

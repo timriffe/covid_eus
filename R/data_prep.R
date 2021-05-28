@@ -4,7 +4,7 @@ library(rvest)
 library(tidyverse)
 library(readr)
 library(lubridate)
-
+library(eurostat)
 
 redistribute_NC_edad <- function(chunk){
   if (sum(chunk$value) == 0){
@@ -343,3 +343,84 @@ excess %>%
   ggplot(aes(x = fecha, y = deaths_st_nac, group = CCAA_iso)) + 
   geom_line()
   
+library(eurostat)
+IN <- get_eurostat("demo_r_mwk2_05") %>% 
+  dplyr::filter(grepl(geo, pattern = "ES")) 
+DDD<-
+IN %>% 
+  mutate(time = as.character(time),
+         CCAA_code = gsub(geo,pattern = "ES", replacement = "")) %>% 
+  dplyr::filter(nchar(CCAA_code) == 2) %>% 
+  mutate(CCAA_iso = recode(CCAA_code,
+                           "11" = "GA",
+                           "12" = "AS",
+                           "13" = "CB",
+                           "21" = "PV",
+                           "22" = "NC",
+                           "23" = "RI",
+                           "24" = "AR",
+                           "30" = "MD",
+                           "41" = "CL",
+                           "42" = "CM",
+                           "43" = "EX",
+                           "51" = "CT",
+                           "52" = "VC",
+                           "53" = "IB",
+                           "61" = "AN",
+                           "62" = "MC",
+                           "63" = "toss",
+                           "64" = "toss",
+                           "70" = "CN"
+                           ),
+         sexo = recode(sex,
+                       "F" = "M",
+                       "M" = "H",
+                       "T" = "T")) %>% 
+  dplyr::filter(CCAA_iso != "toss") %>% 
+  separate(time, sep = "W", into = c("year_iso","week_iso"), convert = TRUE) %>% 
+  dplyr::filter(year_iso >= 2016, 
+                year_iso < 2020, 
+                age != "UNK") %>% 
+  mutate(edad = recode(age,
+                      "TOTAL" = "TOT",
+                      "Y_GE90" = "90",
+                      "Y_LT5" = "0",
+                      "Y5-9" = "5",
+                      "Y10-14" = "10",
+                      "Y15-19" = "15",
+                      "Y20-24" = "20",
+                      "Y25-29" = "25",
+                      "Y30-34" = "30",
+                      "Y35-39" = "35",
+                      "Y40-44" = "40",
+                      "Y45-49" = "45",
+                      "Y50-54" = "50",
+                      "Y55-59" = "55",
+                      "Y60-64" = "60",
+                      "Y65-69" = "65",
+                      "Y70-74" = "70",
+                      "Y75-79" = "75",
+                      "Y80-84" = "80",
+                      "Y85-89" = "85")) %>% 
+  select(CCAA_iso, year_iso, week_iso, sexo, edad, deaths = values) %>% 
+  group_by(CCAA_iso, year_iso, week_iso, sexo) %>% 
+  do(rescale_age(chunk = .data)) %>% 
+  ungroup() 
+  
+
+DDDD <- bind_rows(DD, DDD)
+  saveRDS(DDDD, file = "Data/deaths_weekly.rds")
+
+# CCAA2 <- read_html("https://www.ine.es/daco/daco42/codmun/cod_ccaa_provincia.htm") %>% 
+  #   html_table() %>% 
+  #   '[['(1) %>% 
+  #   mutate(CPRO = sprintf("%02d", CPRO)) %>% 
+  #   select(CPRO,
+  #          CCAA = `Comunidad Autónoma`,
+  #          CODCCAA = CODAUTO) %>% 
+  #   left_join(CPRO) %>% 
+  #   left_join(prov_codes) %>% 
+  #   select(CODCCAA, CCAA_iso, CCAA) %>% 
+  #   distinct() %>% 
+  #   filter(!is.na(CCAA_iso))
+    

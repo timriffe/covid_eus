@@ -218,9 +218,7 @@ CCAA <- read_html("https://www.ine.es/daco/daco42/codmun/cod_ccaa_provincia.htm"
   filter(!is.na(CCAA_iso))
 
 
-D <- read_delim("Data/35179.csv", delim = ";", col_types = "cccccc")
-DD <-
-D %>% 
+D <- read_delim("Data/35179.csv", delim = ";", col_types = "cccccc") %>% 
   mutate(Total = gsub(Total, pattern = "\\.", replacement = "") %>% as.numeric()) %>% 
   rename(edad = `Edad (grupos quinquenales)`) %>% 
   dplyr::filter(`Comunidades autónomas` != "Total Nacional",
@@ -271,83 +269,9 @@ D %>%
   select(-PH, -PM, -HM) %>% 
   pivot_longer(H:`T`, values_to = "deaths", names_to = "sexo")
 
-P <- read_delim("Data/31304.csv", delim = ";") %>% 
-  mutate(Total = gsub(Total, pattern = "\\.", replacement = ""),
-         Total = as.integer(Total)) %>% 
-  dplyr::filter(Edad !="Total",
-                Provincias != "Total Nacional") %>% 
-  separate(Edad, sep = " ", into= c("Age",NA)) %>% 
-  mutate(Age = as.integer(Age)) %>% 
-  separate(Provincias, into = c("CPRO","Provincia")) %>% 
-  dplyr::filter(Periodo == "1 de julio de 2020",
-                Sexo %in% c("Hombres", "Mujeres")) %>% 
-  mutate(sexo = case_when(Sexo == "Hombres" ~ "H",
-                          Sexo == "Mujeres" ~ "M"),
-         edad = Age - Age %% 5,
-         edad = ifelse(edad > 90, 90, edad)) %>% 
-  group_by(sexo, edad, CPRO) %>% 
-  summarize(pob = sum(Total), .groups = "drop") %>% 
-  mutate(edad = as.character(edad)) %>% 
-  left_join(CPRO) %>% 
-  left_join(prov_codes) %>% 
-  dplyr::filter(!is.na(CCAA_iso)) %>% 
-  group_by(CCAA_iso, sexo, edad) %>% 
-  summarize(pob = sum(pob), .groups = "drop") %>% 
-  mutate(edad = as.integer(edad))
-
-excess <-
-  DD %>% 
-  pivot_wider(names_from = "year_iso", values_from = "deaths") %>% 
-  mutate(E2020 = `2020` - `2019`,
-         E2021 = `2021` - `2019`) %>% 
-  select(-`2019`,-`2020`,-`2021`) %>% 
-  pivot_longer(E2020:E2021, names_to = "year_iso", values_to = "value") %>% 
-  mutate(year_iso = gsub(year_iso, pattern = "E", replacement = "")) %>% 
-  dplyr::filter(sexo != "T") %>% 
-  left_join(P, by = c("CCAA_iso","sexo","edad")) %>% 
-  mutate(variable = "exceso",
-         year_iso = as.numeric(year_iso))
-
-
-stand_pv <-
-  P %>% 
-  dplyr::filter(CCAA_iso == "PV") %>% 
-  mutate(stand_pv = pob / sum(pob)) %>% 
-  select(sexo, edad, stand_pv)
-
-# Spain nation standard population (age * sex)
-stand_nac <-
-  P %>% 
-  group_by(sexo, edad) %>% 
-  summarize(pob = sum(pob), .groups = "drop") %>% 
-  mutate(stand_nac = pob / sum(pob)) %>% 
-  select(sexo, edad, stand_nac)
-
-excess <-
-  out %>% 
-  select(year_iso, week_iso, fecha) %>% 
-  distinct() %>% 
-  right_join(excess) %>% 
-  dplyr::filter(!is.na(fecha)) %>% 
-  left_join(stand_pv) %>% 
-  left_join(stand_nac) 
-
-saveRDS(excess, file = "Data/excess.rds")
-
-excess %>% 
-  mutate(tasa = value / pob) %>% 
-  group_by(CCAA_iso, year_iso, week_iso, fecha) %>% 
-  summarize(deaths_st_pv = sum(tasa * stand_pv),
-            deaths_st_nac = sum(tasa * stand_nac),
-            .groups = "drop") %>% 
-  ggplot(aes(x = fecha, y = deaths_st_nac, group = CCAA_iso)) + 
-  geom_line()
-  
-library(eurostat)
-IN <- get_eurostat("demo_r_mwk2_05") %>% 
-  dplyr::filter(grepl(geo, pattern = "ES")) 
-DDD<-
-IN %>% 
+# get earlier years for baseline
+DD <- get_eurostat("demo_r_mwk2_05") %>% 
+  dplyr::filter(grepl(geo, pattern = "ES")) %>% 
   mutate(time = as.character(time),
          CCAA_code = gsub(geo,pattern = "ES", replacement = "")) %>% 
   dplyr::filter(nchar(CCAA_code) == 2) %>% 
@@ -408,9 +332,83 @@ IN %>%
   ungroup() 
   
 
-DDDD <- bind_rows(DD, DDD)
-  saveRDS(DDDD, file = "Data/deaths_weekly.rds")
+  P <- read_delim("Data/31304.csv", delim = ";") %>% 
+    mutate(Total = gsub(Total, pattern = "\\.", replacement = ""),
+           Total = as.integer(Total)) %>% 
+    dplyr::filter(Edad !="Total",
+                  Provincias != "Total Nacional") %>% 
+    separate(Edad, sep = " ", into= c("Age",NA)) %>% 
+    mutate(Age = as.integer(Age)) %>% 
+    separate(Provincias, into = c("CPRO","Provincia")) %>% 
+    dplyr::filter(Periodo == "1 de julio de 2020",
+                  Sexo %in% c("Hombres", "Mujeres")) %>% 
+    mutate(sexo = case_when(Sexo == "Hombres" ~ "H",
+                            Sexo == "Mujeres" ~ "M"),
+           edad = Age - Age %% 5,
+           edad = ifelse(edad > 90, 90, edad)) %>% 
+    group_by(sexo, edad, CPRO) %>% 
+    summarize(pob = sum(Total), .groups = "drop") %>% 
+    left_join(CPRO) %>% 
+    left_join(prov_codes) %>% 
+    dplyr::filter(!is.na(CCAA_iso)) %>% 
+    group_by(CCAA_iso, sexo, edad) %>% 
+    summarize(pob = sum(pob), .groups = "drop") %>% 
+    arrange(CCAA_iso, sexo, edad)
 
+  DDD <- DD %>% 
+    group_by(CCAA_iso, week_iso, sexo, edad) %>% 
+    summarize(baseline = mean(deaths),.groups = "drop") %>% 
+    right_join(D, by = c("CCAA_iso", "week_iso", "edad", "sexo")) %>% 
+    dplyr::filter(year_iso > 2019,
+                  sexo != "T")
+  
+  excess_deaths <-
+    DDD %>% 
+    mutate(value = deaths - baseline) %>% 
+    left_join(P, by = c("CCAA_iso","sexo","edad")) %>% 
+    mutate(variable = "exceso",
+           year_iso = as.numeric(year_iso))
+  
+  
+  stand_pv <-
+    P %>% 
+    dplyr::filter(CCAA_iso == "PV") %>% 
+    mutate(stand_pv = pob / sum(pob)) %>% 
+    select(sexo, edad, stand_pv)
+  
+  # Spain nation standard population (age * sex)
+  stand_nac <-
+    P %>% 
+    group_by(sexo, edad) %>% 
+    summarize(pob = sum(pob), .groups = "drop") %>% 
+    mutate(stand_nac = pob / sum(pob)) %>% 
+    select(sexo, edad, stand_nac)
+  
+  
+# left off here ----------------
+  # ---------------------------------------------
+  excess <-
+    out %>% 
+    select(year_iso, week_iso, fecha) %>% 
+    distinct() %>% 
+    right_join(excess_deaths) %>% 
+    dplyr::filter(!is.na(fecha)) %>% 
+    left_join(stand_pv) %>% 
+    left_join(stand_nac) 
+  
+  saveRDS(excess, file = "Data/excess.rds")
+  
+  # excess %>% 
+  #   mutate(tasa = value / pob) %>% 
+  #   group_by(CCAA_iso, year_iso, week_iso, fecha) %>% 
+  #   summarize(deaths_st_pv = sum(tasa * stand_pv),
+  #             deaths_st_nac = sum(tasa * stand_nac),
+  #             .groups = "drop") %>% 
+  #   ggplot(aes(x = fecha, y = deaths_st_nac, group = CCAA_iso)) + 
+  #   geom_line()
+  # 
+  
+  
 # CCAA2 <- read_html("https://www.ine.es/daco/daco42/codmun/cod_ccaa_provincia.htm") %>% 
   #   html_table() %>% 
   #   '[['(1) %>% 

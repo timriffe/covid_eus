@@ -1,7 +1,12 @@
 library(tidyverse)
 library(ggridges)
 library(lubridate)
-covid <- readRDS("Data/iscii_ccaa.rds")
+covid <- readRDS("Data/data_ccaa.rds") %>% 
+  arrange(CCAA_iso, variable, sexo, edad, year_iso, week_iso) %>% 
+  group_by(CCAA_iso, variable, sexo, edad) %>% 
+  mutate(tasa_cumul = cumsum(tasa)) %>% 
+  ungroup() %>% 
+  dplyr::filter(!is.na(value))
 
 
 covid_st <-
@@ -9,7 +14,37 @@ covid_st <-
   group_by(CCAA_iso,year_iso, week_iso, fecha, variable) %>% 
   summarize(tasa_st_pv = sum(tasa * stand_pv), 
             tasa_st_nac = sum(tasa * stand_nac),
-            .groups = "drop") 
+            .groups = "drop")
+
+covid_st_by_sex <-
+  covid %>% 
+  group_by(CCAA_iso,year_iso, week_iso, fecha, variable, sexo) %>% 
+  summarize(tasa_st_pv = sum(tasa * stand_pv) / sum(stand_pv), 
+            tasa_st_nac = sum(tasa * stand_nac) / sum(stand_nac),
+            .groups = "drop")
+
+covid_st_by_sex %>% 
+  select(CCAA_iso, fecha, sexo, variable, tasa_st_nac) %>% 
+  pivot_wider(names_from = sexo, values_from = tasa_st_nac) %>% 
+  dplyr::filter(variable != "exceso") %>% 
+  mutate(sr = H / M,
+         sr = ifelse(is.infinite(sr) | is.nan(sr),NA_real_,sr)) %>% 
+  ggplot(aes(x = fecha, y = sr, group = CCAA_iso, color = CCAA_iso)) +
+  geom_line()+
+  facet_wrap(~variable, scale = "free_y") + 
+  scale_y_log10()
+
+covid_st_by_sex %>% 
+  group_by(CCAA_iso, variable, sexo) %>% 
+  summarize(tasa_st_nac = sum(tasa_st_nac), .groups = "drop") %>% 
+  pivot_wider(names_from = sexo, values_from = tasa_st_nac) %>% 
+  dplyr::filter(variable != "exceso") %>% 
+  mutate(sr = H / M,
+         sr = ifelse(is.infinite(sr) | is.nan(sr),NA_real_,sr)) %>% 
+  ggplot(aes(x = variable, y = sr, group = CCAA_iso, color = CCAA_iso)) +
+  geom_line()+
+  scale_y_log10()
+
 
 # cumulative incidence by age groups and sex
 covid %>% 
@@ -54,7 +89,10 @@ PV %>%
   dplyr::filter(variable == "def") %>% 
   ggplot(aes(x = fecha, y = tasa_st_pv)) +
   geom_line()
-
+PV %>% 
+  dplyr::filter(variable == "exceso") %>% 
+  ggplot(aes(x = fecha, y = tasa_st_pv)) +
+  geom_line()
 
 
 covid_st %>% 
@@ -65,8 +103,8 @@ covid_st %>%
                                     "2020-06-20",
                                     "2020-11-30",
                                     "2021-03-01",
-                                    "2021-05-18"))) +
-  annotate("text",x = as_date(c("2020-03-01", "2020-09-01","2020-12-30","2021-03-15")),
+                                    "2021-05-31"))) +
+  annotate("text",x = as_date(c("2020-03-01", "2020-09-01","2021-01-10","2021-04-15")),
            y = rep(19,4), 
            label = c("W1","W2","W3","W4"),
            size = 8)
@@ -78,7 +116,7 @@ covid_ranks <-
                                            "2020-06-20",
                                            "2020-11-30",
                                            "2021-03-01",
-                                           "2021-05-21")),
+                                           "2021-05-31")),
                           labels = c("W1","W2","W3","W4")) ) %>% 
   group_by(variable, CCAA_iso, WaveBreaks) %>% 
   summarize(tasa_st_nac = sum(tasa_st_nac),
@@ -93,10 +131,10 @@ cr_pv <- covid_ranks %>% dplyr::filter(CCAA_iso == "PV")
 this_variable <- "hosp"
 
 CCAA_rank_plots <- list()
-es_vars         <- c("casos","hosp","uci","def")
-eng_vars        <- c("case","hospitalization","UCI","death")
+es_vars         <- c("casos","hosp","uci","def", "exceso")
+eng_vars        <- c("case","hospitalization","UCI","death","excess death")
 names(eng_vars) <- es_vars
-for (this_variable in c("casos","hosp","uci","def")){
+for (this_variable in es_vars){
   
   
   CCAA_rank_plots[[this_variable]] <-
@@ -132,7 +170,7 @@ for (this_variable in c("casos","hosp","uci","def")){
           axis.ticks.y=element_blank())
 }
 
-CCAA_rank_plots[[4]]
+CCAA_rank_plots[[5]]
 
   #facet_wrap(~variable) +
   # geom_point(data= dplyr::filter(covid_ranks, CCAA_iso == "PV", variable == "casos"), 
@@ -145,10 +183,11 @@ covid_relranks <-
   covid_ranks %>% 
   group_by(WaveBreaks, variable) %>% 
   mutate(RelRank = tasa_st_nac / max(tasa_st_nac) * 17) %>% 
-  ungroup() 
+  ungroup() %>% 
+  mutate(RelRank = ifelse(sign(tasa_st_nac) == -1, 0, RelRank))
 
 CCAA_relrank_plots <- list()
-for (this_variable in c("casos","hosp","uci","def")){
+for (this_variable in es_vars){
   
   CCAA_relrank_plots[[this_variable]] <-
   covid_relranks %>% 
@@ -183,43 +222,174 @@ for (this_variable in c("casos","hosp","uci","def")){
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank())
 }
-CCAA_relrank_plots[[1]]
+CCAA_relrank_plots[[5]]
 
 
 library(cowplot)
-plot_grid(CCAA_relrank_plots[[1]],CCAA_relrank_plots[[2]],CCAA_relrank_plots[[3]],CCAA_relrank_plots[[4]])
+plot_grid(CCAA_relrank_plots[[1]],CCAA_relrank_plots[[2]],CCAA_relrank_plots[[3]],CCAA_relrank_plots[[4]], CCAA_relrank_plots[[5]])
 
 
-covid_relranks2 <-
-  covid_ranks %>% 
+covid_ranks2 <-
+  covid %>% 
+  group_by(CCAA_iso, variable,sexo,edad) %>%
+  summarize(tasa = sum(tasa, na.rm = TRUE), .groups = "drop") %>% 
+  left_join(stand_nac, by = c("sexo","edad")) %>% 
+  left_join(stand_pv, by = c("sexo", "edad")) %>% 
   group_by(CCAA_iso, variable) %>% 
-  summarize(tasa_st_nac = sum(tasa_st_nac),.groups = "keep") %>% 
-  mutate(RelRank = tasa_st_nac / max(tasa_st_nac) * 17) %>% 
-  ungroup() 
+  summarize(tasa_st_pv = sum(tasa * stand_pv, na.rm=TRUE), 
+            tasa_st_nac = sum(tasa * stand_nac, na.rm=TRUE),
+            .groups = "drop") %>% 
+  group_by(variable) %>% 
+  mutate(Rank = rank(tasa_st_nac),
+         RelRank = tasa_st_nac / max(tasa_st_nac, na.rm=TRUE) * 17) %>% 
+  ungroup() %>% 
+  mutate(variable = factor(variable, levels = c("casos","hosp","uci","def","exceso")))
+
+PV2 <- covid_ranks2 %>% 
+  dplyr::filter(CCAA_iso == "PV")
   
-  covid_relranks2 %>% 
-  ggplot(aes(x = variable, y = RelRank, color = CCAA_iso)) + 
+covid_ranks2 %>% 
+  ggplot(aes(x = variable, y = RelRank, color = CCAA_iso, group = CCAA_iso)) + 
     geom_point(size = 4) +
-    geom_line(aes(x = variable, y = RelRank, color = CCAA_iso, group = CCAA_iso)) +
-    geom_text(data = dplyr::filter(covid_relranks, 
-                             
-                                   variable == "casos"),
-              mapping = aes(x = 4.2, y = RelRank, label = CCAA_iso),
-              size = 5) +
-    geom_text(data = dplyr::filter(covid_relranks, 
-                                   WaveBreaks == "W1",
-                                   variable == this_variable),
-              mapping = aes(x = .8, y = RelRank, label = CCAA_iso),
-              size = 5) + 
+    geom_line() +
+  geom_point(data = PV2, 
+             mapping = aes(x = variable, y = RelRank, color = CCAA_iso, group = CCAA_iso),
+             size = 6) +
+  geom_line(data = PV2, 
+             mapping = aes(x = variable, y = RelRank, color = CCAA_iso, group = CCAA_iso),
+             size = 2) +
+  geom_line() +
+     geom_text_repel(data = dplyr::filter(covid_ranks2, 
+                              
+                                    variable == "exceso"),
+               mapping = aes(x = 5.2, y = RelRank, label = CCAA_iso),
+               size = 5) +
+     geom_text_repel(data = dplyr::filter(covid_ranks2, 
+                                    variable == "casos"),
+               mapping = aes(x = .8, y = RelRank, label = CCAA_iso),
+               size = 5) + 
     #annotate("text",x = rep(.6,17), y = 1:17, label = 17:1) +
     #annotate("text", x = .6, y= 17.9, label = "Rel. Rank", size = 6) +
-    annotate("text", x = 4.2, y= 17.9, label = "CCAA", size = 6) +
-    labs(title = paste("CCAA age-sex-wave-standardized",
-                       eng_vars[this_variable],"rates by wave"),
-         subtitle = "based on following date breaks: 2020-06-20, 2020-11-30, 2021-03-01",
-         x = "Wave") +
+    annotate("text", x = 5.2, y= 17.9, label = "CCAA", size = 6) +
+    labs(title = paste("CCAA age-sex-wave-standardized cumulative rates by wave"),
+         subtitle = "Relative ranks",
+         x = "Measure") +
     theme(legend.position = "none",
           axis.title.y=element_blank(),
           axis.text.y=element_blank(),
           axis.ticks.y=element_blank())
+  
+
+# TODO
+# 1) ridgeplots for each variable
+# 2) rank plots by wave.
+
+CCAA_isov <- covid_st %>% pull(CCAA_iso) %>% unique() %>% sort()
+CCAA_cols <- rep(gray(.5),length(CCAA_isov))
+CCAA_cols[CCAA_isov %in% c("PV","NC")] <- "#d4204d"
+
+variables <- c("casos","hosp","uci","def","exceso")
+variable_names <- c("casos","hospitalizaciones","uci","defunciones COVID","exceso mortalidad")
+
+
+heights <- c(casos = 100, hosp =3000 , uci = 50000, def = 50000, exceso = 3000  )
+#heights <- c(casos= 1, hosp = 1, uci = 1, def = 1, exceso = 1)
+ridge_plots <- list()
+
+for (i in 1:5){
+  ridge_plots[[i]] <-
+  covid_st %>% 
+  dplyr::filter(variable == variables[i])  %>% 
+  ggplot(aes(x = fecha, 
+             y = reorder(CCAA_iso, tasa_st_nac, na.rm=TRUE, FUN = var), 
+             height = tasa_st_nac * heights[variables[i]],
+             fill = CCAA_iso)) + 
+  geom_ridgeline(color  = gray(.2), alpha = .7) +
+  geom_vline(xintercept = as_date(c("2020-01-05",
+                                    "2020-06-20",
+                                    "2020-11-30",
+                                    "2021-03-01",
+                                    "2021-05-31")),
+             color = "#AAAAAA",
+             linetype = "82") +
+  theme(legend.pos = "none", 
+        axis.text=element_text(size=12),
+        axis.title=element_text(size=14),
+        title = element_text(size = 14)) + 
+  labs(x = "fecha", y = "CCAA", title = paste0("Tasas estandarizadas de ",variable_names[i])) + 
+  scale_fill_manual(values = CCAA_cols, labels = CCAA_isov)
+
+}
+
+# library(cowplot)
+# plot_grid(plotlist = ridge_plots, ncol = 1)
+
+ridge_plots[[1]]
+ridge_plots[[2]]
+ridge_plots[[3]]
+ridge_plots[[4]]
+ridge_plots[[5]]
+
+
+covid_st %>% 
+  select(CCAA_iso, fecha, variable, tasa_st_nac) %>% 
+  pivot_wider(names_from = variable, values_from = tasa_st_nac) %>% 
+  ggplot(aes(x = casos, y = hosp)) +
+  geom_point() +
+  scale_x_log10() + 
+  scale_y_log10()
+
+covid_st %>% 
+  select(CCAA_iso, fecha, variable, tasa_st_nac) %>% 
+  pivot_wider(names_from = variable, values_from = tasa_st_nac) %>% 
+  ggplot(aes(x = casos, y = uci)) +
+  geom_point() +
+  scale_x_log10() + 
+  scale_y_log10()
+
+covid_st %>% 
+  select(CCAA_iso, fecha, variable, tasa_st_nac) %>% 
+  pivot_wider(names_from = variable, values_from = tasa_st_nac) %>% 
+  ggplot(aes(x = casos * 1e5, y = def * 1e5)) +
+  geom_point() +
+  scale_x_log10() + 
+  scale_y_log10()
+
+library(GGally)
+library(ggforce)
+ggpairs(covid_st)
+
+ 
+
+# Check correlations (as scatterplots), distribution and print corrleation coefficient 
+A <-
+covid_st %>% 
+  select(CCAA_iso, fecha, variable, tasa_st_nac) %>% 
+  pivot_wider(names_from = variable, values_from = tasa_st_nac) %>% 
+  dplyr::filter(casos > 0) %>% 
+  group_by(CCAA_iso) %>% 
+  summarize(casos_hosp = cor(casos, hosp),
+            casos_uci = cor(casos, uci),
+            casos_def = cor(casos, def),
+            casos_exceso = cor(casos, exceso, 
+                               use = "pairwise.complete.obs"),
+            hosp_uci = cor(hosp, uci),
+            hosp_def = cor(hosp, def),
+            hosp_exceso = cor(hosp, exceso, 
+                              use = "pairwise.complete.obs"),
+            uci_def = cor(uci, def),
+            uci_exceso = cor(uci, exceso, 
+                             use = "pairwise.complete.obs"),
+            def_exceso = cor(def, exceso, 
+                             use = "pairwise.complete.obs"))
+
+A %>% 
+  pivot_longer(casos_hosp:def_exceso, names_to = "vars", values_to = "cor") %>% 
+  separate(vars, sep = "_", into = c("var1","var2")) %>% 
+ mutate(var1 = factor(var1,levels = c("casos","hosp","uci","def")),
+        var2 = factor(var2,levels = c("hosp","uci","def","exceso"))) %>% 
+  ggplot(aes(x=var1,y=var2, fill = `cor`)) +
+  geom_tile() +
+  scale_fill_continuous_diverging()+
+  facet_wrap(.~CCAA_iso, ncol = 4)
   

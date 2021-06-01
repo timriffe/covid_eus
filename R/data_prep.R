@@ -126,7 +126,8 @@ CC <-
   left_join(prov_codes, by = "provincia_iso") %>% 
   left_join(CPRO, by = "provincia_iso")
 
-#
+# gets denominators
+download.file("https://www.ine.es/jaxiT3/files/t/es/csv_bdsc/31304.csv?nocab=1", destfile = "Data/31304.csv")
 # For population, get INE series 31304 (https://www.ine.es/jaxiT3/Tabla.htm?t=31304)
 P <- read_delim("Data/31304.csv", delim = ";") %>% 
   mutate(Total = gsub(Total, pattern = "\\.", replacement = ""),
@@ -153,36 +154,36 @@ S <-
   group_by(CCAA_iso, year_iso, week_iso, fecha, sexo, edad, variable) %>% 
   summarise(value = sum(value),
             pob = sum(pob),
-            .groups = "drop")
+            .groups = "drop") %>% 
+  mutate(edad = as.integer(edad))
 # Basque Country standard population (age * sex)
-stand_pv <-
-  S %>% 
-  dplyr::filter(fecha == min(fecha),
-                CCAA_iso == "PV",
-                variable == "casos") %>% 
-  mutate(stand_pv = pob / sum(pob)) %>% 
-  select(sexo, edad, stand_pv)
+ stand_pv <-
+   S %>% 
+   dplyr::filter(fecha == min(fecha),
+                 CCAA_iso == "PV",
+                 variable == "casos") %>% 
+   mutate(stand_pv = pob / sum(pob)) %>% 
+   select(sexo, edad, stand_pv)
+# 
+# # Spain nation standard population (age * sex)
+ stand_nac <-
+   S %>% 
+   group_by(sexo, edad) %>% 
+   summarize(pob = sum(pob), .groups = "drop") %>% 
+   mutate(stand_nac = pob / sum(pob)) %>% 
+   select(sexo, edad, stand_nac)
 
-# Spain nation standard population (age * sex)
-stand_nac <-
+U <-
   S %>% 
-  group_by(sexo, edad) %>% 
-  summarize(pob = sum(pob), .groups = "drop") %>% 
-  mutate(stand_nac = pob / sum(pob)) %>% 
-  select(sexo, edad, stand_nac)
-
-out <-
-  S %>% 
-  left_join(stand_nac) %>% 
-  left_join(stand_pv) %>% 
   arrange(CCAA_iso, variable, edad, fecha) %>% 
   group_by(CCAA_iso, variable, edad) %>% 
-  mutate(tasa = value / pob,
-         tasa_cumul = cumsum(tasa)) %>% 
+  mutate(tasa = value / pob) %>% 
+  left_join(stand_pv, by = c("edad","sexo")) %>% 
+  left_join(stand_nac, by = c("edad","sexo")) %>% 
   ungroup() 
 
 
-saveRDS(out, file = "Data/iscii_ccaa.rds")
+# saveRDS(out, file = "Data/iscii_ccaa.rds")
 
 #-----------------------------------------------------------------------#
 # INE, just do a simple excess calc based on mean deaths in prior years #
@@ -217,7 +218,7 @@ CCAA <- read_html("https://www.ine.es/daco/daco42/codmun/cod_ccaa_provincia.htm"
   distinct() %>% 
   filter(!is.na(CCAA_iso))
 
-
+download.file("https://www.ine.es/jaxiT3/files/t/es/csv_bdsc/35179.csv?nocab=1", destfile = "Data/35179.csv")
 D <- read_delim("Data/35179.csv", delim = ";", col_types = "cccccc") %>% 
   mutate(Total = gsub(Total, pattern = "\\.", replacement = "") %>% as.numeric()) %>% 
   rename(edad = `Edad (grupos quinquenales)`) %>% 
@@ -331,7 +332,6 @@ DD <- get_eurostat("demo_r_mwk2_05") %>%
   do(rescale_age(chunk = .data)) %>% 
   ungroup() 
   
-
   P <- read_delim("Data/31304.csv", delim = ";") %>% 
     mutate(Total = gsub(Total, pattern = "\\.", replacement = ""),
            Total = as.integer(Total)) %>% 
@@ -355,19 +355,16 @@ DD <- get_eurostat("demo_r_mwk2_05") %>%
     summarize(pob = sum(pob), .groups = "drop") %>% 
     arrange(CCAA_iso, sexo, edad)
 
-  DDD <- DD %>% 
+  excess_deaths <- DD %>% 
     group_by(CCAA_iso, week_iso, sexo, edad) %>% 
     summarize(baseline = mean(deaths),.groups = "drop") %>% 
     right_join(D, by = c("CCAA_iso", "week_iso", "edad", "sexo")) %>% 
     dplyr::filter(year_iso > 2019,
-                  sexo != "T")
-  
-  excess_deaths <-
-    DDD %>% 
+                  sexo != "T") %>% 
     mutate(value = deaths - baseline) %>% 
     left_join(P, by = c("CCAA_iso","sexo","edad")) %>% 
     mutate(variable = "exceso",
-           year_iso = as.numeric(year_iso))
+           tasa = value / pob)
   
   
   stand_pv <-
@@ -388,15 +385,21 @@ DD <- get_eurostat("demo_r_mwk2_05") %>%
 # left off here ----------------
   # ---------------------------------------------
   excess <-
-    out %>% 
+    U %>% 
     select(year_iso, week_iso, fecha) %>% 
     distinct() %>% 
-    right_join(excess_deaths) %>% 
+    right_join(excess_deaths, by = c("year_iso", "week_iso")) %>% 
     dplyr::filter(!is.na(fecha)) %>% 
-    left_join(stand_pv) %>% 
-    left_join(stand_nac) 
+    select(-baseline, -deaths) 
   
-  saveRDS(excess, file = "Data/excess.rds")
+  out <-
+    excess %>% 
+    left_join(stand_nac, by = c("edad", "sexo")) %>% 
+    left_join(stand_pv, by = c("edad","sexo")) %>% 
+    bind_rows(U)
+  
+  
+  saveRDS(out, file = "Data/data_ccaa.rds") 
   
   # excess %>% 
   #   mutate(tasa = value / pob) %>% 

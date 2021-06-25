@@ -51,7 +51,7 @@ CCAA_isov <- covid_st %>% pull(CCAA) %>% unique() %>% sort()
 CCAA_cols <- rep(gray(.5),length(CCAA_isov))
 CCAA_cols[CCAA_isov == "Navarra"] <- "#d4204d"
 CCAA_cols[CCAA_isov == "País Vasco"] <- "#20ab3a"
-heights <- c(casos = 250, hosp =3000 , uci = 50000, def = 8000, exceso = 8000  )
+heights <- c(casos = 250, hosp =3000 , uci = 40000, def = 8000, exceso = 8000  )
 # heights <- c(casos = 250, hosp =3000 , uci = 50000, def = 10000, exceso = 10000  )
 
 

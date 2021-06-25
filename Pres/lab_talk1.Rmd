@@ -1,0 +1,98 @@
+---
+title: 'proyecto: COVID impacto regional'
+author: "Tim Riffe"
+date: "9 junio 2021"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+ridge_plots <- local(get(load(here::here("FigData/ridge_plots.Rdata"))))
+CCAA_ranks <- local(get(load(here::here("FigData/CCAA_rank_plots_waves.Rdata"))))
+CCAA_relranks       <- local(get(load(here::here("FigData/CCAA_relrank_waves.Rdata"))))
+cumulative_ranks    <- local(get(load(here::here("FigData/cumulative_ranks.Rdata"))))
+cumulative_relranks <- local(get(load(here::here("FigData/cumulative_relranks.Rdata"))))
+
+
+```
+
+## Datos
+
+- Datos sobre casos, hospitalizaciones, uci, defunciones covid vienen del ISCII
+- Defunciones de todas causes (2019-2021) vienen del INE
+- Defunciones de todas causes (2016-2018) vienen de EUROSTAT
+- Denominadores vienen del INE
+- Tasas estandarizadas por sexo y edad, standar nacional.
+
+## Series temporales
+
+```{r}
+ridge_plots[[1]]
+```
+
+## Series temporales
+
+```{r}
+ridge_plots[[2]]
+```
+
+## Series temporales
+
+```{r}
+ridge_plots[[3]]
+```
+
+## Series temporales
+
+```{r}
+ridge_plots[[4]]
+```
+
+## Series temporales
+
+```{r}
+ridge_plots[[5]]
+```
+
+## Rank por olas
+
+```{r}
+CCAA_ranks[[1]]
+```
+
+## Rank por olas
+
+```{r}
+CCAA_ranks[[2]]
+```
+
+## Rank por olas
+
+```{r}
+CCAA_ranks[[3]]
+```
+
+## Ranquings por olas
+
+```{r}
+CCAA_ranks[[4]]
+```
+
+## Rank por olas
+
+```{r}
+CCAA_ranks[[5]]
+```
+
+## Rank cumulativo por medida
+
+```{r}
+cumulative_ranks
+```
+
+## Rank relativos cumulativo por medida
+
+```{r}
+cumulative_relranks
+```
+

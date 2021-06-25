@@ -396,8 +396,27 @@ DD <- get_eurostat("demo_r_mwk2_05") %>%
     excess %>% 
     left_join(stand_nac, by = c("edad", "sexo")) %>% 
     left_join(stand_pv, by = c("edad","sexo")) %>% 
-    bind_rows(U)
+    bind_rows(U) %>% 
+    mutate(CCAA = case_when(CCAA_iso == "AN" ~ "Andalucía",
+                            CCAA_iso == "AR" ~ "Aragón",
+                            CCAA_iso == "AS" ~ "Asturias",
+                            CCAA_iso == "CB" ~ "Cantabria",
+                            CCAA_iso == "CL" ~ "Castilla y León",
+                            CCAA_iso == "CM" ~ "Castilla-La Mancha",
+                            CCAA_iso == "CN" ~ "Canarias",
+                            CCAA_iso == "CT" ~ "Catalunya ",
+                            CCAA_iso == "EX" ~ "Extremadura",
+                            CCAA_iso == "GA" ~ "Galicia",
+                            CCAA_iso == "IB" ~ "Illes Balears",
+                            CCAA_iso == "MC" ~ "Murcia",
+                            CCAA_iso == "MD" ~ "C. Madrid",
+                            CCAA_iso == "NC" ~ "Navarra",
+                            CCAA_iso == "PV" ~ "País Vasco",
+                            CCAA_iso == "RI" ~ "La Rioja",
+                            CCAA_iso == "VC" ~ "C. Valenciana"))
   
+
+
   
   saveRDS(out, file = "Data/data_ccaa.rds") 
   

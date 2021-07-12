@@ -2,15 +2,14 @@ library(tidyverse)
 library(ggridges)
 library(lubridate)
 library(ggrepel)
-library(GGally)
 library(ggforce)
 library(colorspace)
 library(cowplot)
 library(patchwork)
 library(ggridges)
 
-
 covid <- readRDS("Data/data_ccaa.rds") %>% 
+  filter(!is.na(tasa)) %>% 
   arrange(CCAA, variable, sexo, edad, year_iso, week_iso) %>% 
   group_by(CCAA, variable, sexo, edad) %>% 
   mutate(tasa_cumul = cumsum(tasa)) %>% 
@@ -146,10 +145,52 @@ ggsave(here::here("FigData",paste0(i,".pdf")),pp)
 #              color = "#0011FF50")
         
 
+# cols <- c("casos" = "#274d52", 
+#           "hosp" = "#c7a2a6", 
+#           "uci" = "#818b70", 
+#           "def" = "#604e3c",
+#           "exceso" = "#8c9fb7")
+# "#e41a1c" # red
+# "#377eb8" # blue
+# "#4daf4a" # green
+# "#984ea3" # purple
+# "#ff7f00" # orange
+cols <- c("casos" = "#4daf4a", 
+          "hosp" = "#984ea3", 
+          "uci" = "#377eb8", 
+          "def" = "#e41a1c",
+          "exceso" = "#ff7f00")
+DT <- 
+  covid_st %>% 
+  filter(fecha == ymd("2021-06-14")) %>% 
+  mutate(tasa_st_cumul = tasa_st_cumul * 1000,
+         lab_color = case_when(CCAA == "País Vasco" ~ "#20ab3a",
+                               CCAA == "Navarra" ~ "#d4204d",
+                               TRUE ~ "#000000")) %>% 
+  group_by(CCAA) %>% 
+  mutate(deaths = tasa_st_cumul[variable == "def"]) 
+
+pc <- 
+DT %>% 
+  ggplot(aes(y = reorder(CCAA,deaths), 
+             x = tasa_st_cumul, 
+             color = variable))  +
+  geom_point(size = 4) +
+  scale_x_log10() + 
+  labs(title = "Tasas acumuladas estandarizadas (14 junio 2021)") +
+  ylab("") +
+  xlab("Tasa acumulada estandarizada per mil (log)") +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14),
+        title = element_text(size=20,face="bold"),
+        plot.title.position = "plot") + 
+  scale_color_manual(values = cols) + 
+  geom_hline(data = NULL, yintercept = 11, color = "#20ab3a", size = 5, alpha = .2) +
+  geom_hline(data = NULL, yintercept = 10, color = "#d4204d", size = 5, alpha = .2) +
+  geom_point(size = 4) 
 
 
-
-
+ggsave(here::here("FigData","cumul.pdf"),pc)
 
 
 

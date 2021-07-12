@@ -19,7 +19,7 @@ covid <- readRDS("Data/data_ccaa.rds") %>%
 
 # pseudo Lexis surfaces
 covid %>% 
-  dplyr::filter(CCAA_iso == "MD", variable == "casos") %>% 
+  dplyr::filter(CCAA_iso == "CT", variable == "casos") %>% 
   ggplot(aes(x =fecha, y = edad + 5, fill = tasa))+
   geom_tile()+
   scale_fill_continuous_sequential("PinkYl") + 

@@ -147,7 +147,7 @@ P <- read_delim("Data/31304.csv", delim = ";") %>%
   summarize(pob = sum(Total), .groups = "drop") %>% 
   mutate(edad = as.character(edad))
 
-# adds cods to Population
+# adds codes to Population
 R <- left_join(CC, P, by = c("edad","sexo","CPRO"))
 
 # tabulate provinces to CCAA, populations
@@ -181,6 +181,13 @@ U <-
   S %>% 
   arrange(CCAA_iso, variable, edad, fecha) %>% 
   group_by(CCAA_iso, variable, edad) %>% 
+  # Note: technically this is NOT a rate!
+  # we would multiply by 7/365.25 to make it 
+  # a really real rate. But we visualize in 
+  # relative scale ridgeplots, so it makes
+  # NO DIFFERENCE for those plots. Adjust this
+  # or else take care of it late if you plan
+  # to do real rate things with the data
   mutate(tasa = value / pob) %>% 
   left_join(stand_pv, by = c("edad","sexo")) %>% 
   left_join(stand_nac, by = c("edad","sexo")) %>% 
@@ -372,6 +379,13 @@ excess_deaths <- DD %>%
     mutate(value = deaths - baseline) %>% 
     left_join(P, by = c("CCAA_iso","sexo","edad")) %>% 
     mutate(variable = "exceso",
+           # Note: technically this is NOT a rate!
+           # we would multiply by 7/365.25 to make it 
+           # a really real rate. But we visualize in 
+           # relative scale ridgeplots, so it makes
+           # NO DIFFERENCE for those plots. Adjust this
+           # or else take care of it late if you plan
+           # to do real rate things with the data
            tasa = value / pob)
   
 # calculate new 5-year age group standards

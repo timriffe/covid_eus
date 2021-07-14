@@ -21,6 +21,8 @@ It should follow a format like this:
  6     2020        2 2020-01-06 AN       H        25  0    244391 exceso    0             0.0263   0.0217 Andalucía
 ```
 
+Note the variable called `tasa` in fact is not a rate. Rather it is defined as `value / pob`. If you want to use it as a rate then on a week timescale you should multiply `tasa` by `365.25 / 7` . If instead you want the cumulative rate at the end of the series, then multiply population by `k = fecha %>% range() %>% diff() %>% as.numeric()` or similar. It would be preferable to have interpolated population estimates at a few time points, but given the width of age groups it wouldn't make much difference. Note the `excess` is given in 5-year age groups, whereas all other (stacked) variables are given in 10-year age groups. For our figures this makes no difference since we use age-standardized summary measures, but if you want to repurpose this data object you might want to either split the isciii data into 5-year age groups or else group excess to 10 year age groups. For further advice along these lines shoot me a line.
+
 5) the script `report_figures.R` assumes you have `data_ccaa.rds` created from the previous step. 
   Some of the annotations in the ridge plots created in that script will be misplaced if date ranges change...
 

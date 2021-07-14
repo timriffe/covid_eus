@@ -1,3 +1,8 @@
+########################################################
+# this script not required and not maintained
+# If data_prep.R has been executed, you can skip to figures_report.R
+########################################################
+
 library(tidyverse)
 library(ggridges)
 library(lubridate)

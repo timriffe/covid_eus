@@ -6,6 +6,9 @@ library(readr)
 library(lubridate)
 library(eurostat)
 
+# custom functions
+
+# redistribute unknown ages
 redistribute_NC_edad <- function(chunk){
   if (sum(chunk$value) == 0){
     chunk %>% dplyr::filter(edad != "NC") %>% return()
@@ -19,6 +22,8 @@ redistribute_NC_edad <- function(chunk){
     select(-p)
   chunk
 }
+
+# redistribute unknown provinces
 redistribute_NC_prov <- function(chunk){
   if (sum(chunk$value) == 0){
     chunk %>% dplyr::filter(provincia_iso != "NC") %>% return()
@@ -33,6 +38,7 @@ redistribute_NC_prov <- function(chunk){
   chunk
 }
 
+# Prep-process ISCIII data
 url <- "https://cnecovid.isciii.es/covid19/resources/casos_hosp_uci_def_sexo_edad_provres.csv"
 
 download.file(url, destfile = "Data/isciii.csv", mode = "wb")
@@ -83,14 +89,7 @@ B <-
   do(redistribute_NC_prov(chunk = .data)) %>% 
   ungroup()
 
-  
-
-
-
-
-#CCAA %>% View()
-#A$provincia_iso
-
+# load codes from various sources to we can join all the data sources
 
 # this relates province iso2 to ccaa iso2
 prov_codes <- 
@@ -126,8 +125,9 @@ CC <-
   left_join(prov_codes, by = "provincia_iso") %>% 
   left_join(CPRO, by = "provincia_iso")
 
-# gets denominators
+# load denominators
 download.file("https://www.ine.es/jaxiT3/files/t/es/csv_bdsc/31304.csv?nocab=1", destfile = "Data/31304.csv")
+
 # For population, get INE series 31304 (https://www.ine.es/jaxiT3/Tabla.htm?t=31304)
 P <- read_delim("Data/31304.csv", delim = ";") %>% 
   mutate(Total = gsub(Total, pattern = "\\.", replacement = ""),
@@ -147,8 +147,10 @@ P <- read_delim("Data/31304.csv", delim = ";") %>%
   summarize(pob = sum(Total), .groups = "drop") %>% 
   mutate(edad = as.character(edad))
 
+# adds cods to Population
 R <- left_join(CC, P, by = c("edad","sexo","CPRO"))
 
+# tabulate provinces to CCAA, populations
 S <- 
   R %>% 
   group_by(CCAA_iso, year_iso, week_iso, fecha, sexo, edad, variable) %>% 
@@ -156,7 +158,8 @@ S <-
             pob = sum(pob),
             .groups = "drop") %>% 
   mutate(edad = as.integer(edad))
-# Basque Country standard population (age * sex)
+
+# Basque Country standard population (age * sex) [not used]
  stand_pv <-
    S %>% 
    dplyr::filter(fecha == min(fecha),
@@ -164,8 +167,8 @@ S <-
                  variable == "casos") %>% 
    mutate(stand_pv = pob / sum(pob)) %>% 
    select(sexo, edad, stand_pv)
-# 
-# # Spain nation standard population (age * sex)
+
+# # Spain total standard population (age * sex) [used]
  stand_nac <-
    S %>% 
    group_by(sexo, edad) %>% 
@@ -173,6 +176,7 @@ S <-
    mutate(stand_nac = pob / sum(pob)) %>% 
    select(sexo, edad, stand_nac)
 
+# join standards to denominators
 U <-
   S %>% 
   arrange(CCAA_iso, variable, edad, fecha) %>% 
@@ -192,7 +196,7 @@ U <-
 
 # https://www.ine.es/jaxiT3/Tabla.htm?t=35179
 
-# helpers:
+# custom functions for excess calculations
 rescale_age <- function(chunk){
   TOT <- chunk %>% dplyr::filter(edad == "TOT") %>% dplyr::pull(deaths)
   chunk <- chunk %>% dplyr::filter(edad != "TOT")
@@ -205,6 +209,7 @@ rescale_sex <- function(chunk){
   chunk %>% mutate(deaths = deaths / sum(deaths) * TOT)
 }
 
+# more codes needed for matching
 CCAA <- read_html("https://www.ine.es/daco/daco42/codmun/cod_ccaa_provincia.htm") %>% 
   html_table() %>% 
   '[['(1) %>% 
@@ -218,6 +223,7 @@ CCAA <- read_html("https://www.ine.es/daco/daco42/codmun/cod_ccaa_provincia.htm"
   distinct() %>% 
   filter(!is.na(CCAA_iso))
 
+# get INE weekly deaths in 5-year age groups
 download.file("https://www.ine.es/jaxiT3/files/t/es/csv_bdsc/35179.csv?nocab=1", destfile = "Data/35179.csv")
 D <- read_delim("Data/35179.csv", delim = ";", col_types = "cccccc") %>% 
   mutate(Total = gsub(Total, pattern = "\\.", replacement = "") %>% as.numeric()) %>% 
@@ -270,7 +276,7 @@ D <- read_delim("Data/35179.csv", delim = ";", col_types = "cccccc") %>%
   select(-PH, -PM, -HM) %>% 
   pivot_longer(H:`T`, values_to = "deaths", names_to = "sexo")
 
-# get earlier years for baseline
+# get 2016-2019 from EUROSTAT for baseline
 DD <- get_eurostat("demo_r_mwk2_05") %>% 
   dplyr::filter(grepl(geo, pattern = "ES")) %>% 
   mutate(time = as.character(time),
@@ -332,7 +338,8 @@ DD <- get_eurostat("demo_r_mwk2_05") %>%
   do(rescale_age(chunk = .data)) %>% 
   ungroup() 
   
-  P <- read_delim("Data/31304.csv", delim = ";") %>% 
+# we do this in 5-year age groups, so need new pops
+P <- read_delim("Data/31304.csv", delim = ";") %>% 
     mutate(Total = gsub(Total, pattern = "\\.", replacement = ""),
            Total = as.integer(Total)) %>% 
     dplyr::filter(Edad !="Total",
@@ -355,7 +362,8 @@ DD <- get_eurostat("demo_r_mwk2_05") %>%
     summarize(pob = sum(pob), .groups = "drop") %>% 
     arrange(CCAA_iso, sexo, edad)
 
-  excess_deaths <- DD %>% 
+  # calculate excess
+excess_deaths <- DD %>% 
     group_by(CCAA_iso, week_iso, sexo, edad) %>% 
     summarize(baseline = mean(deaths),.groups = "drop") %>% 
     right_join(D, by = c("CCAA_iso", "week_iso", "edad", "sexo")) %>% 
@@ -366,15 +374,15 @@ DD <- get_eurostat("demo_r_mwk2_05") %>%
     mutate(variable = "exceso",
            tasa = value / pob)
   
-  
-  stand_pv <-
+# calculate new 5-year age group standards
+stand_pv <-
     P %>% 
     dplyr::filter(CCAA_iso == "PV") %>% 
     mutate(stand_pv = pob / sum(pob)) %>% 
     select(sexo, edad, stand_pv)
   
   # Spain nation standard population (age * sex)
-  stand_nac <-
+stand_nac <-
     P %>% 
     group_by(sexo, edad) %>% 
     summarize(pob = sum(pob), .groups = "drop") %>% 
@@ -382,9 +390,9 @@ DD <- get_eurostat("demo_r_mwk2_05") %>%
     select(sexo, edad, stand_nac)
   
   
-# left off here ----------------
-  # ---------------------------------------------
-  excess <-
+
+# ---------------------------------------------
+excess <-
     U %>% 
     select(year_iso, week_iso, fecha) %>% 
     distinct() %>% 
@@ -392,7 +400,8 @@ DD <- get_eurostat("demo_r_mwk2_05") %>%
     dplyr::filter(!is.na(fecha)) %>% 
     select(-baseline, -deaths) 
   
-  out <-
+# also adds full CCAA names for labels in graphs
+out <-
     excess %>% 
     left_join(stand_nac, by = c("edad", "sexo")) %>% 
     left_join(stand_pv, by = c("edad","sexo")) %>% 

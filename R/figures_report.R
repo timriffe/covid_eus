@@ -1,39 +1,11 @@
 
-# create rank plot of cumualtives by measure.
-# don't include link w excess
-
-# 1.       Eliminar el título “Tasas estandarizadas de…” o cualquiera de los títulos. Los vamos poner fuera del área del gráfico
-# 2.       ¿Se puede poner en los gráficos de montañas la fecha de inicio de la serie? ¿Es 01/01/2020?
-# 3.       Eliminar una de las líneas de etapas, la que corresponde a “fin movilidad (06/01/2021)”
-# 4.       Nombres exacto de las etapas (puede ponerse un poco más pequeño el tamaño de la letra):
-# –         1º Estado de Alarma (14/03/2020)
-# –         Desescalada (05/05/2020) [ahora pone 04/05/2020]
-# –         2º Estado de Alarma (25/10/2020)
-# –         Apertura Navidad (23/12/2020)
-# –         Fin 2º Estado de Alarma (09/05/2021)
-# 5.       Grafico tasas acumuladas: en la leyenda quitar la palabra “variables” y poner los nombres completos de cada una:
-# –         Casos
-# –         Hospitalizaciones
-# –         Ingresos UCI
-# –         Defunciones
-# –         Exceso mortalidad
-# 6.       Formato de los archivos: en imagen, png o cualquier otro formato de imagen.
-# 7.       Hemos quedado que la fecha final de datos sea el 30 de junio (en el caso de casos, hospi, UCI y def) y la última posible en el caso del exceso (creo que será 14 de junio según lo que me has mandado en las tasas acumuladas, pero confírmamelo).
-# 8.        Confírmame que las fuentes de datos los gráficos de montañas, todos excepto el de exceso, serían: Fuente: elaboración propia a partir de datos del Panel COVID-19 del Centro Nacional de Epidemiología”. Y la del gráfico de montañas de exceso sería: Fuente: elaboración propia a partir de datos de la Estimación del número de defunciones semanales durante el brote de Covid-19 (EDeS) y de Cifras de Población del INE y de Eurostat.
-# 9.       Grafico ranking CCAA: etiquetas de CCAA separadas para exceso de mortalidad y sin líneas que unan con los demás indicadores.
-# 
-# Sobre la mención a la accesibilidad del código que vamos a poner en la metodología, si redactas tú la frase con lo que quieres que aparezca concretamente, te lo agradezco. Y así no hay errores.
-
+# packages needed
 library(tidyverse)
 library(ggridges)
 library(lubridate)
-library(ggrepel)
-library(ggforce)
-library(colorspace)
 library(cowplot)
-library(patchwork)
-library(ggridges)
 
+# someo data prep for the visualizations
 covid <- readRDS("Data/data_ccaa.rds") %>% 
   filter(!is.na(tasa), 
          # data cutoff declared for reporting
@@ -41,17 +13,9 @@ covid <- readRDS("Data/data_ccaa.rds") %>%
   arrange(CCAA, variable, sexo, edad, year_iso, week_iso) %>% 
   group_by(CCAA, variable, sexo, edad) %>% 
   mutate(tasa_cumul = cumsum(tasa)) %>% 
-  ungroup() %>% 
-  dplyr::filter(!is.na(value))
+  ungroup() 
 
-covid %>% 
-  select(CCAA) %>% 
-  distinct() %>% 
-  mutate(CCAA_alpha = c("Andalucía","Aragón" ,"Asturias" ,"Madrid" ,"Valenciana" ,"Canarias"          ,"Cantabria" ,"Castilla y León"   ,"Castilla-La Mancha", "Catalunya" , "Extremadura" , "Galicia"           , "Illes Balears" , "Rioja" , "Murcia" , "Navarra" , "País Vasco"  )) %>% 
-  arrange(CCAA_alpha) %>% 
-  pull(CCAA) %>% 
-  dput()
-
+# the standarization
 covid_st <-
   covid %>% 
   group_by(CCAA, CCAA_iso, year_iso, week_iso, fecha, variable) %>% 
@@ -63,13 +27,9 @@ covid_st <-
                                        "Galicia", "Illes Balears", "C. Madrid", "Murcia", "Navarra", 
                                        "País Vasco", "La Rioja", "C. Valenciana"))))
 
-# covid_st_by_sex <-
-#   covid %>% 
-#   group_by(CCAA_iso,year_iso, week_iso, fecha, variable, sexo) %>% 
-#   summarize(tasa_st_pv = sum(tasa * stand_pv) / sum(stand_pv), 
-#             tasa_st_nac = sum(tasa * stand_nac) / sum(stand_nac),
-#             .groups = "drop")
-
+############################################################
+# Ridge plots   (scale is relative, no need to annualize!) #                                  
+############################################################
 # plot objects
 variables                            <- c("casos","hosp","uci","def","exceso")
 variable_names                       <- c("Casos","Hospitalizaciones","Ingresos UCI",
@@ -163,24 +123,12 @@ ggdraw(p) +
 
 ggsave(here::here("FigData",paste0(i,".png")),pp,width = 3000, height = 1700, units = "px")
 }
-# +
-#   geom_vline(xintercept = as_date(c("2020-03-14",
-#                                     "2020-05-05",
-#                                     "2020-10-26",
-#                                     "2021-05-10")),
-#              color = "#0011FF50")
-        
 
-# cols <- c("casos" = "#274d52", 
-#           "hosp" = "#c7a2a6", 
-#           "uci" = "#818b70", 
-#           "def" = "#604e3c",
-#           "exceso" = "#8c9fb7")
-# "#e41a1c" # red
-# "#377eb8" # blue
-# "#4daf4a" # green
-# "#984ea3" # purple
-# "#ff7f00" # orange
+
+############################################################
+# Dot plot of cumulative values                            #
+# (discount to annualize, labels in per 1000, log scale)   #
+############################################################
 cols <- c("Casos" = "#4daf4a", 
           "Hospitalizaciones" = "#984ea3", 
           "Ingresos UCI" = "#377eb8", 
@@ -189,8 +137,10 @@ cols <- c("Casos" = "#4daf4a",
 
 DT <- 
   covid_st %>% 
+  filter(fecha <= ymd("2021-06-14")) %>% 
+  mutate(k = range(fecha) %>% diff() %>% as.numeric() * 1 / 365.25) %>% 
   filter(fecha == ymd("2021-06-14")) %>% 
-  mutate(tasa_st_cumul = tasa_st_cumul * 1000,
+  mutate(tasa_st_cumul = tasa_st_cumul * 1000 / k,
          lab_color = case_when(CCAA == "País Vasco" ~ "#20ab3a",
                                CCAA == "Navarra" ~ "#d4204d",
                                TRUE ~ "#000000")) %>% 
@@ -224,11 +174,9 @@ DT %>%
 
 ggsave(here::here("FigData","cumul.png"),pc,width = 3000, height = 1700, units = "px")
 
-
-
-"2021-06-14"
-"2021-06-28"
-
+#############################
+# Rank plot of cumulative   #
+#############################
 covid_ranks2 <-
   covid %>% 
   group_by(CCAA, variable,sexo,edad, stand_nac) %>%
